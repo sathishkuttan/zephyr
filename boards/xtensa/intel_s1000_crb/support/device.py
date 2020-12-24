@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2019 Intel Corporation
+# Copyright (c) 2020 Intel Corporation
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -23,23 +23,23 @@ class Device:
     Device class containing the interface methods for communicating
     with the target using SPI bus and GPIOs
     """
-    def __init__(self):
+    def __init__(self, host):
         """
         Read config file and determine the SPI device, speed, mode
         GPIO pin assignments, etc.
         Initialize data structures accordingly.
         """
         config_file = os.path.dirname(__file__)
-        config_file += '/config.yml'
+        config_file = os.path.join(config_file, 'config.yml')
         with open(config_file, 'r') as ymlfile:
             config = yaml.safe_load(ymlfile)
         self.name = config['general']['name']
-        self.spi_device = config['spi']['device']
-        self.spi_speed = config['spi']['max_speed']
+        self.spi_speed = config['general']['max_spi_speed']
+        self.spi_device = config[host]['spi']['device']
         self.spi_mode = None
-        self.gpio_reset = config['gpio']['reset']
-        self.gpio_wake = config['gpio']['wake']
-        self.gpio_irq = config['gpio']['irq']
+        self.gpio_reset = config[host]['gpio']['reset']
+        self.gpio_wake = config[host]['gpio']['wake']
+        self.gpio_irq = config[host]['gpio']['irq']
         self.spi = None
         self.reset_pin = None
         self.wake_pin = None

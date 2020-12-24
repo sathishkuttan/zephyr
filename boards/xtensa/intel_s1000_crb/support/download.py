@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 #
-# Copyright (c) 2019 Intel Corporation
+# Copyright (c) 2020 Intel Corporation
 #
 # SPDX-License-Identifier: Apache-2.0
 #
@@ -13,21 +13,23 @@
 import os
 import sys
 import hashlib
+import argparse
 import device
 import messenger
 
-sue_creek = device.Device()
 msg = messenger.Message()
 
 def check_arguments():
     """
-    Check whether file name is provided.
+    Check whether file name host type are provided.
     If not print usage instruction and exit.
     """
-    if len(sys.argv) != 2:
-        print('Usage: python3 %s <zephyr.bin>' % sys.argv[0])
-        sys.exit()
-    return sys.argv[1]
+    parser = argparse.ArgumentParser()
+    parser.add_argument("host", choices=["rpi", "upsq"],
+            help="Host System Type (Raspberry Pi* or UP Squared* board")
+    parser.add_argument("binary_file", help="Zephyr Binary File")
+    args = parser.parse_args()
+    return args.host, args.binary_file
 
 def calc_firmware_sha(file):
     """
@@ -60,29 +62,29 @@ def calc_firmware_sha(file):
        print('SHA: ' + sha256.hexdigest())
        return (size, padding, sha256.digest())
 
-def setup_device():
+def setup_device(device):
     """
     Configure SPI master device
     Reset target and send initialization commands
     """
-    sue_creek.configure_device(spi_mode = 3, order = 'msb', bits = 8)
-    sue_creek.reset_device()
+    device.configure_device(spi_mode=3, order='msb', bits=8)
+    device.reset_device()
 
     command = msg.create_memwrite_cmd((0x71d14, 0, 0x71d24, 0,
             0x304628, 0xd, 0x71fd0, 0x3))
-    response = sue_creek.send_receive(command)
+    response = device.send_receive(command)
     msg.print_response(response)
 
-def load_firmware(file, size, padding, sha):
+def load_firmware(device, binary, size, padding, sha):
     """
     Send command to load firmware
     Transfer binary file contents including padding
     """
     command = msg.create_loadfw_cmd(size, sha)
-    response = sue_creek.send_receive(command)
+    response = device.send_receive(command)
     msg.print_response(response)
 
-    with open(file, 'rb') as firmware:
+    with open(binary, 'rb') as firmware:
         firmware.seek(0, 0)
         block_size = msg.get_bulk_message_size()
         transferred = 0
@@ -90,29 +92,29 @@ def load_firmware(file, size, padding, sha):
             if len(block) < block_size:
                 block += b'\0' * padding
             bulk_msg = msg.create_bulk_message(block)
-            sue_creek.send_bulk(bulk_msg)
+            device.send_bulk(bulk_msg)
             transferred += len(bulk_msg)
             sys.stdout.write('\r%d of %d bytes transferred to %s.'
-                    % (transferred, size, sue_creek.name))
+                    % (transferred, size, device.name))
         print('')
         firmware.close()
 
-    sue_creek.check_device_ready()
+    device.check_device_ready()
 
     command = msg.create_null_cmd()
-    response = sue_creek.send_receive(command)
+    response = device.send_receive(command)
     msg.print_response(response)
 
-def execute_firmware():
+def execute_firmware(device):
     """
     Send command to start execution
     """
     command = msg.create_memwrite_cmd((0x71d10, 0, 0x71d20, 0))
-    response = sue_creek.send_receive(command)
+    response = device.send_receive(command)
     msg.print_response(response)
 
     command = msg.create_execfw_cmd()
-    response = sue_creek.send_receive(command, wait = False)
+    response = device.send_receive(command, wait=False)
     msg.print_response(response)
 
 def main():
@@ -122,11 +124,12 @@ def main():
     Setup the SPI master device and GPIOs on the host
     Download Firmware
     """
-    file = check_arguments()
-    (size, padding, sha) = calc_firmware_sha(file)
-    setup_device()
-    load_firmware(file, size, padding, sha)
-    execute_firmware()
+    (host, binary) = check_arguments()
+    (size, padding, sha) = calc_firmware_sha(binary)
+    sue_creek = device.Device(host)
+    setup_device(sue_creek)
+    load_firmware(sue_creek, binary, size, padding, sha)
+    execute_firmware(sue_creek)
     sue_creek.close()
 
 if __name__ == '__main__':
